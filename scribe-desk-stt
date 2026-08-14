@@ -1,0 +1,16 @@
+#!/bin/bash
+# CLI launcher — prefers the local venv, falls back to the voxbox
+# speech-to-text venv (the elevenlabs SDK lives in both).
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+LOCAL_VENV="$SCRIPT_DIR/venv"
+VOXBOX_VENV="$HOME/git/mishandled/voxbox/speech-to-text/venv"
+
+if [ -d "$LOCAL_VENV" ]; then
+    source "$LOCAL_VENV/bin/activate"
+elif [ -d "$VOXBOX_VENV" ]; then
+    source "$VOXBOX_VENV/bin/activate"
+else
+    echo "⚠  No venv found. Run $SCRIPT_DIR/setup.sh first." >&2
+    exit 1
+fi
+exec python "$SCRIPT_DIR/scribedesk_stt.py" "$@"

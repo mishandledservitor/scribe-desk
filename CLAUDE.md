@@ -1,0 +1,47 @@
+# Scribe Desk
+
+## What this repo is
+
+A macOS Tk GUI + CLI for transcribing audio through ElevenLabs Scribe, organised around **projects** — named transcription contexts that each carry their own keyterms, Scribe settings, and output folder.
+
+Three modules, no framework, no build step:
+
+| File | Role |
+|---|---|
+| `scribedesk_config.py` | project registry (`projects.json`), per-project settings (`config/<slug>.json`), path resolution |
+| `scribedesk_stt.py` | ElevenLabs Scribe wrapper — the full API surface, driven by CLI flags |
+| `scribedesk_gui.py` | Tk front-end; shells out to `scribe-desk-stt` per file and parses its stage markers for the progress bar |
+
+`scribe-desk` and `scribe-desk-stt` are the launchers; `Scribe Desk.app` is an icon and a launch script, no code. `make_icon.py` regenerates the icon.
+
+## Conventions
+
+- **The slug is the identity.** A project's display name is editable; its slug never changes, and it's what names the config file and the default output folder. Every function taking a slug calls `assert_safe_slug` first — the registry is a hand-editable JSON file, so a slug is untrusted input on a path.
+- **Registry and settings are local state, not config.** Keyterms are the names of real people; `output_dir` is a path on one machine. Both stay gitignored. Don't add a "commit your settings" convenience.
+- **Only `output/<slug>/` is ours to delete.** A project can point `output_dir` at any folder the user owns, which will contain files this tool never wrote. `delete_project` gates removal on `is_managed_output` and the GUI doesn't offer the option for a custom folder. Keep both halves — the GUI check is the UX, the config check is the guarantee.
+- **Settings survive an unknown key, not a missing one.** `load_settings` merges over `DEFAULT_SETTINGS` and drops anything unrecognised, so adding a setting means adding it to `DEFAULT_SETTINGS` and nowhere else for old config files to keep loading. `output_dir` was added this way and existing files with no such key read as `""`.
+- The GUI reads the **live** field, not the saved one, when resolving the output folder (`_current_output_dir`), so an unsaved edit is what takes effect on Transcribe. Match that pattern for anything else that decides where bytes go.
+
+## Standing rules
+
+Process rules, binding on any agent working here.
+
+1. **No agent memory.** Everything durable lives in the repo — this file and `CHANGELOG.md`. If a memory and the repo disagree, the repo wins.
+2. **All development happens on a worktree.** Never write code on a checkout of `main`. Repo management (merging, tagging, reading) is the exception.
+3. **Commit every round.** Stage specific paths, never `-A`. New commits only; no `--amend` unless asked, no force-push.
+4. **Refresh `Current status` before each commit**, including its date, in the same commit.
+5. **Verify GUI changes by building the GUI.** `tk.Tk()` + `root.withdraw()` + construct `ProjectsGUI` exercises the whole widget tree without a visible window, and the handlers can be called directly. There are no tests; this is the substitute, and it catches real breakage.
+
+Spec Kit is *not* set up here, unlike the repo template's default. This is a three-file tool with no test suite, and a spec-per-feature workflow would cost more than it returns. Revisit if it grows.
+
+## Current status
+
+Last updated: 2026-08-14
+
+Extracted from a private knowledge-base repo, where it lived as a folder called "KB Transcriber". Renamed throughout; the hardcoded keyterm seed was dropped, so a first run now seeds an empty "Default" project. Added the per-project output folder — the feature that made the extraction worth doing.
+
+Live local state moved across with it — the project registry, per-project settings, transcripts and processed audio. All of that is gitignored and stays on the machine it was made on.
+
+- Full history: `CHANGELOG.md`.
+- MIT licensed. **This repo is public**, which is the single most important fact when adding anything to it.
+- A keyterm list is a directory of real people's names. It lives in gitignored per-project config and must stay there; don't add a convenience that commits it, and don't paste one into a doc, a test fixture, or a commit message. The original history was discarded for exactly this reason — it carried a working list.
