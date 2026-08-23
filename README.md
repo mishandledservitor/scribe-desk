@@ -32,7 +32,7 @@ If the voxbox repo is present, its `speech-to-text/venv` and `.env` are used as 
 3. Select files → **Transcribe**. Settings auto-save to the project.
 4. Transcripts land in the project's output folder; source audio moves to `processed/`.
 
-Tip for meetings: set **Speaker labels** per project, e.g. `0=Simon,1=George`, after checking which id Scribe gave each voice in a first pass.
+Tip for meetings: run a first pass with diarization on and no labels set — the transcript comes back with lines like `Speaker 0:` / `Speaker 1:`. Those numbers are what you type into **Speaker labels**, e.g. `0=Simon,1=George`, so the next pass on the same recurring group already has names.
 
 ## Output folder, per project
 

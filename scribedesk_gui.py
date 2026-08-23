@@ -829,7 +829,7 @@ class ProjectsGUI:
         self.opts["labels"] = tk.StringVar(value="")
         ttk.Entry(row, textvariable=self.opts["labels"], width=24).pack(side=tk.LEFT)
         row = ttk.Frame(parent); row.pack(fill=tk.X)
-        ttk.Label(row, text="   e.g. 0=DM,1=Player 1,2=Player 2",
+        ttk.Label(row, text="   e.g. 0=DM,1=Player 1  ·  ids show as “Speaker 0” in a first pass",
                   style="Sub.TLabel").pack(side=tk.LEFT, padx=(18, 0))
 
         # detect_speaker_roles

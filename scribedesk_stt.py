@@ -96,13 +96,29 @@ def _speaker_segments(words):
     return segments
 
 
+def _norm_speaker_key(raw):
+    """Canonicalise a speaker id, or a key typed into --labels, to a bare id.
+
+    Scribe returns 'speaker_0'; the docs and the GUI hint have always told
+    people to write '0'. Accept either, plus 'Speaker 0', so a label lands on
+    its speaker whichever way it was typed.
+    """
+    k = str(raw).strip().lower()
+    for prefix in ("speaker_", "speaker "):
+        if k.startswith(prefix):
+            k = k[len(prefix):]
+            break
+    return k.strip()
+
+
 def _label_for_speaker(spk, label_map):
-    if label_map and spk in label_map:
-        return label_map[spk]
+    key = _norm_speaker_key(spk)
+    if label_map and key in label_map:
+        return label_map[key]
     # ElevenLabs returns 'agent' / 'customer' when detect_speaker_roles=true.
-    if spk in ("agent", "customer"):
-        return spk.capitalize()
-    return f"Speaker {spk}"
+    if key in ("agent", "customer"):
+        return key.capitalize()
+    return f"Speaker {key}"
 
 
 def format_text(response, speakers, label_map, timestamps):
@@ -290,6 +306,25 @@ def process_file(client, audio_path, *, out_format, output_path, speakers, langu
     else:
         result = format_text(response, speakers, label_map, inline_timestamps)
 
+    if speakers and label_map:
+        try:
+            present = []
+            seen = set()
+            for spk, *_ in _speaker_segments(response.words or []):
+                k = _norm_speaker_key(spk)
+                if k not in seen:
+                    seen.add(k)
+                    present.append(k)
+            unmatched = [k for k in label_map if k not in present]
+            if unmatched:
+                found = ", ".join(present) if present else "none detected"
+                print(
+                    f"⚠  Speaker label(s) matched nobody in this audio: "
+                    f"{', '.join(unmatched)}  ·  speakers present: {found}"
+                )
+        except Exception:
+            pass
+
     if not no_print:
         print("─" * 50)
         print(result)
@@ -313,7 +348,7 @@ def parse_label_map(spec):
         if "=" not in pair:
             continue
         k, v = pair.split("=", 1)
-        out[k.strip()] = v.strip()
+        out[_norm_speaker_key(k)] = v.strip()
     return out or None
 
 
