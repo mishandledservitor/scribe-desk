@@ -40,6 +40,8 @@ Last updated: 2026-08-23
 
 **Speaker labels work now.** They never had: Scribe returns speaker ids as `speaker_0`, every piece of documentation told people to write `0`, and the mismatch failed silently — the label simply didn't apply and the transcript said `Speaker speaker_0`. Both forms now normalise to the same key, the unlabelled fallback reads `Speaker 0`, and a label matching nobody says so instead of doing nothing. Found by using the tool rather than reading it, which is the only way this class of bug surfaces: the code is self-consistent, and only the round trip through the real API shows that the ids it returns aren't the ids the docs promise.
 
+**`config/` is now ignored wholesale** — `config/*` with `!config/.gitkeep`, matching how `inbox/`, `output/` and `processed/` are already handled. The old pair of patterns listed `config/*.json` and `config/*.json.deleted-*` by name, which meant any other suffix on a settings file — a `.bak`, a hand-made copy — was tracked by default and could be committed without git objecting. A keyterm list is a directory of real people's names and this repo is public, so the ignore rule has to fail closed against filenames nobody thought of rather than enumerate the ones somebody did.
+
 Extracted from a private knowledge-base repo, where it lived as a folder called "KB Transcriber". Renamed throughout; the hardcoded keyterm seed was dropped, so a first run now seeds an empty "Default" project. Added the per-project output folder — the feature that made the extraction worth doing.
 
 Live local state moved across with it — the project registry, per-project settings, transcripts and processed audio. All of that is gitignored and stays on the machine it was made on.

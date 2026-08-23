@@ -24,8 +24,8 @@ Icon?
 # its meetings, and its output_dir is a path on this machine. Both are the
 # user's, not the tool's.
 projects.json
-config/*.json
-config/*.json.deleted-*
+config/*
+!config/.gitkeep
 *.corrupt-*
 *.lock
 *.tmp.*
