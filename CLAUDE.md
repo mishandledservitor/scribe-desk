@@ -39,6 +39,8 @@ Spec Kit is *not* set up here, unlike the repo template's default. This is a thr
 
 Last updated: 2026-08-23
 
+**A result in the results panel opens.** Double-clicking a successful line calls `open_transcript(path)`, a plain function that shells out to `open` and returns `False` on a missing file instead of raising, so `_open_result_transcript` can show a dialog rather than let a moved-or-deleted transcript crash the callback. Wired with per-result `Text` tags (`open_<i>`), the same idiom Tk uses for clickable regions in a widget that isn't a Listbox. Verified by testing `open_transcript` directly, per rule 5 — the tag wiring itself is code-reviewed only, not exercised by a test, since building the widget tree needs a window server this session doesn't have.
+
 **Argument and file errors now surface before the API-key check.** The CLI used to validate `ELEVENLABS_API_KEY` before it looked at `args.audio` at all, so every mistake — a typo'd flag, a file that doesn't exist — reported "No ELEVENLABS_API_KEY found" when there was no key set, regardless of what was actually wrong. `validate_audio_file` in `scribedesk_stt.py` is now called from `main()` before the key is loaded, and again inside `process_file` for direct callers; the messages are unchanged, only the order in which they can fire.
 
 **`.env.example` exists.** `.gitignore` already whitelisted it, but nobody had ever added the file, so a new user had to read `load_api_key` in `scribedesk_stt.py` to learn the only variable it reads is `ELEVENLABS_API_KEY`. The example now names it, with a one-line comment pointing at where to get a key.

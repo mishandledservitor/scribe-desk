@@ -91,6 +91,16 @@ def open_in_finder(path):
         subprocess.Popen(["open", path])
 
 
+def open_transcript(path):
+    """Opens a finished transcript with the platform opener. Returns True on
+    success, False on a missing path — never raises, so a GUI callback can
+    report the failure with a message instead of an exception."""
+    if not path or not os.path.isfile(path):
+        return False
+    subprocess.Popen(["open", path])
+    return True
+
+
 def scan_inbox():
     try:
         names = sorted(os.listdir(INBOX_DIR))
@@ -749,6 +759,13 @@ class ProjectsGUI:
         self.output_dir_var.set("")
         self._update_output_hint()
 
+    def _open_result_transcript(self, path):
+        if not open_transcript(path):
+            messagebox.showwarning(
+                "Open transcript",
+                f"Couldn't find:\n{path}\n\nIt may have moved or been deleted.",
+                parent=self.root)
+
     def _open_project_output(self):
         if not self.slug:
             open_in_finder(str(cfg.OUTPUT_DIR))
@@ -1198,15 +1215,27 @@ class ProjectsGUI:
                           yscrollcommand=sb.set)
             sb.config(command=txt.yview)
             txt.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            for r in self.results:
+            for i, r in enumerate(self.results):
                 mark = "✅" if r["ok"] else "❌"
                 line = f"{mark}  {r['input']}  ({fmt_time(r['elapsed'])})\n"
                 if r["ok"]:
+                    # Double-click opens the transcript — the row is the
+                    # whole two-line block, tagged per-result so each click
+                    # opens its own file rather than whichever was last drawn.
+                    start = txt.index(tk.END)
                     line += f"     → {display_path(r['output'])}\n"
+                    txt.insert(tk.END, line)
+                    tag = f"open_{i}"
+                    txt.tag_add(tag, start, txt.index(tk.END))
+                    txt.tag_configure(tag, underline=False)
+                    txt.tag_bind(tag, "<Double-Button-1>",
+                                 lambda _e, path=r["output"]: self._open_result_transcript(path))
+                    txt.tag_bind(tag, "<Enter>", lambda _e: txt.config(cursor="hand2"))
+                    txt.tag_bind(tag, "<Leave>", lambda _e: txt.config(cursor=""))
                 else:
                     for l in (r.get("error") or "").splitlines()[-3:]:
                         line += f"     {l}\n"
-                txt.insert(tk.END, line)
+                    txt.insert(tk.END, line)
             txt.config(state=tk.DISABLED)
 
         btns = ttk.Frame(self.container); btns.pack(fill=tk.X, pady=(8, 0))
