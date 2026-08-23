@@ -336,18 +336,31 @@ def model_id_label():
     return {"scribe_v1": "Scribe v1", "scribe_v2": "Scribe v2"}.get(mid, mid)
 
 
+def validate_audio_file(audio_path):
+    """Checks a path resolves to a supported, existing audio file.
+
+    Returns (resolved_path, None) on success, or (resolved_path, error_message)
+    on failure. Kept separate from process_file so main() can run this check
+    before anything that needs an API key — a bad path is the user's mistake
+    and shouldn't be hidden behind a key error that fires for every mistake.
+    """
+    audio_path = os.path.abspath(os.path.expanduser(audio_path))
+    if not os.path.isfile(audio_path):
+        return audio_path, f"⚠  File not found: {audio_path}"
+    ext = os.path.splitext(audio_path)[1].lower().lstrip(".")
+    if ext not in SUPPORTED_FORMATS:
+        return audio_path, f"⚠  Unsupported format: .{ext}"
+    return audio_path, None
+
+
 def process_file(client, audio_path, *, out_format, output_path, speakers, language,
                  num_speakers, tag_audio_events, timestamps_granularity,
                  diarization_threshold, no_verbatim, detect_speaker_roles,
                  keyterms, temperature, seed,
                  label_map, inline_timestamps, no_print):
-    audio_path = os.path.abspath(os.path.expanduser(audio_path))
-    if not os.path.isfile(audio_path):
-        print(f"⚠  File not found: {audio_path}")
-        return False
-    ext = os.path.splitext(audio_path)[1].lower().lstrip(".")
-    if ext not in SUPPORTED_FORMATS:
-        print(f"⚠  Unsupported format: .{ext}")
+    audio_path, error = validate_audio_file(audio_path)
+    if error:
+        print(error)
         return False
 
     size_mb = os.path.getsize(audio_path) / (1024 * 1024)
@@ -469,6 +482,18 @@ def main():
 
     os.environ["PROJECT_MODEL_ID"] = args.model
 
+    # Argument/file validation before anything that needs an API key: a
+    # typo'd flag or a missing file is the user's mistake, and every one of
+    # them deserves its own message instead of being masked by "no key".
+    if not args.audio:
+        print("⚠  No audio file provided.")
+        sys.exit(1)
+
+    _, file_error = validate_audio_file(args.audio)
+    if file_error:
+        print(file_error)
+        sys.exit(1)
+
     api_key = load_api_key()
     if not api_key:
         print("⚠  No ELEVENLABS_API_KEY found. Set the env var or drop it in .env.")
@@ -481,10 +506,6 @@ def main():
         sys.exit(1)
 
     client = ElevenLabs(api_key=api_key)
-
-    if not args.audio:
-        print("⚠  No audio file provided.")
-        sys.exit(1)
 
     keyterms = [k.strip() for k in (args.keyterms or "").split(",") if k.strip()] or None
 

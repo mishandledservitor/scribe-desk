@@ -10,9 +10,11 @@ import contextlib
 import io
 import json
 import os
+import sys
 import tempfile
 import unittest
 import wave
+from unittest import mock
 
 import scribedesk_stt
 
@@ -227,6 +229,44 @@ class TestDescribeApiError(unittest.TestCase):
             self.assertFalse(result)
         finally:
             os.remove(path)
+
+
+class TestArgumentErrorsBeforeKeyErrors(unittest.TestCase):
+    """A user with no API key should still see their own mistake, not a
+    key error that masks it for every other kind of failure too."""
+
+    def _run_main(self, argv):
+        buf = io.StringIO()
+        with mock.patch.object(sys, "argv", ["scribe-desk-stt"] + argv), \
+             contextlib.redirect_stdout(buf):
+            with self.assertRaises(SystemExit) as ctx:
+                scribedesk_stt.main()
+        return ctx.exception.code, buf.getvalue()
+
+    def test_no_key_and_bad_file_reports_the_file_error(self):
+        with mock.patch.object(scribedesk_stt, "load_api_key", return_value=None):
+            code, output = self._run_main(["/nonexistent/does-not-exist.wav"])
+        self.assertEqual(code, 1)
+        self.assertIn("File not found", output)
+        self.assertNotIn("ELEVENLABS_API_KEY", output)
+
+    def test_good_args_and_no_key_reports_the_key_error(self):
+        fd, path = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+        try:
+            with wave.open(path, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(16000)
+                wf.writeframes(b"\x00\x00" * 16000)
+
+            with mock.patch.object(scribedesk_stt, "load_api_key", return_value=None):
+                code, output = self._run_main([path])
+        finally:
+            os.remove(path)
+        self.assertEqual(code, 1)
+        self.assertIn("ELEVENLABS_API_KEY", output)
+        self.assertNotIn("File not found", output)
 
 
 if __name__ == "__main__":
