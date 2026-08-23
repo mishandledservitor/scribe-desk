@@ -30,13 +30,16 @@ Process rules, binding on any agent working here.
 2. **All development happens on a worktree.** Never write code on a checkout of `main`. Repo management (merging, tagging, reading) is the exception.
 3. **Commit every round.** Stage specific paths, never `-A`. New commits only; no `--amend` unless asked, no force-push.
 4. **Refresh `Current status` before each commit**, including its date, in the same commit.
-5. **Verify GUI changes by building the GUI.** `tk.Tk()` + `root.withdraw()` + construct `ProjectsGUI` exercises the whole widget tree without a visible window, and the handlers can be called directly. There are no tests; this is the substitute, and it catches real breakage.
+5. **Verify GUI changes by building the GUI.** `tk.Tk()` + `root.withdraw()` + construct `ProjectsGUI` exercises the whole widget tree without a visible window, and the handlers can be called directly. It catches real breakage, and it is the only check the GUI layer has. Note that `tk.Tk()` blocks outright in a session with no window server, so an agent that can't get a window has to say so rather than report the GUI unverified as verified.
+6. **Non-GUI changes get a test.** `test_scribedesk_stt.py` runs on the standard library alone — `python3 -m unittest test_scribedesk_stt -v`, no pytest, no install. Write the failing test first. `scribedesk_stt.py` imports the `elevenlabs` package inside `main()` and nowhere else, which is what makes the module importable in a test with no SDK and no key; keep it that way.
 
-Spec Kit is *not* set up here, unlike the repo template's default. This is a three-file tool with no test suite, and a spec-per-feature workflow would cost more than it returns. Revisit if it grows.
+Spec Kit is *not* set up here, unlike the repo template's default. This is a three-file tool, and a spec-per-feature workflow would cost more than it returns. Revisit if it grows.
 
 ## Current status
 
 Last updated: 2026-08-23
+
+**API failures are readable, and the repo has its first tests.** Every error from ElevenLabs used to reach the user as the SDK's own `__str__` — a twenty-field HTTP header dump with the actionable sentence at the end of it — so a mistyped key looked like a crash and a rejected option didn't say which option. `describe_api_error` in `scribedesk_stt.py` pulls out the API's message, names the offending field for validation errors, and appends a hint for the status codes that mean something (401, 402, 403, 413, 422, 429, 5xx). It is best-effort by construction and cannot raise: an error handler that throws is strictly worse than the ugly message it replaced. The GUI is unchanged and gets it anyway, because it echoes the CLI's stdout — which is the argument for keeping every user-facing message in the CLI layer rather than duplicating it in the front-end. Found by running the CLI against the live API with a deliberately invalid key, which costs nothing and is the only way to see what the failure path actually prints.
 
 **Speaker labels work now.** They never had: Scribe returns speaker ids as `speaker_0`, every piece of documentation told people to write `0`, and the mismatch failed silently — the label simply didn't apply and the transcript said `Speaker speaker_0`. Both forms now normalise to the same key, the unlabelled fallback reads `Speaker 0`, and a label matching nobody says so instead of doing nothing. Found by using the tool rather than reading it, which is the only way this class of bug surfaces: the code is self-consistent, and only the round trip through the real API shows that the ids it returns aren't the ids the docs promise.
 

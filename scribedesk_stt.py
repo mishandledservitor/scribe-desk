@@ -193,6 +193,94 @@ def format_json_out(response, speakers, label_map):
     return json.dumps(data, indent=2, ensure_ascii=False)
 
 
+_STATUS_HINTS = {
+    401: "check ELEVENLABS_API_KEY — the key in .env or the environment isn't valid",
+    402: "out of credits — top up at elevenlabs.io",
+    403: "this API key isn't permitted to do that — check its permissions at elevenlabs.io",
+    413: "the file is too large for one request — split it and run again",
+    422: "an option isn't valid — fix it and run again; nothing was transcribed",
+    429: "rate limited — wait a moment and run again",
+    500: "ElevenLabs had a server error — run again in a moment",
+    502: "ElevenLabs had a server error — run again in a moment",
+    503: "ElevenLabs had a server error — run again in a moment",
+    504: "ElevenLabs had a server error — run again in a moment",
+}
+
+
+def _one_line(text):
+    collapsed = " ".join(str(text).split())
+    if len(collapsed) > 300:
+        collapsed = collapsed[:299] + "…"
+    return collapsed
+
+
+def describe_api_error(exc):
+    """Turn an ElevenLabs SDK ApiError into a one-line, actionable message.
+
+    The SDK's own __str__ leads with a full HTTP header dump
+    ('headers: {...20 fields...}, status_code: N, body: {...}'), burying the
+    one sentence a user can act on at the end. This pulls the useful part —
+    the API's error message, plus a hint for common status codes — out of
+    that dump. Best-effort: it must never raise, however odd the exception.
+    """
+    try:
+        status = getattr(exc, "status_code", None)
+        body = getattr(exc, "body", None)
+
+        parsed = body
+        if isinstance(body, str):
+            try:
+                parsed = json.loads(body)
+            except Exception:
+                parsed = None
+                message = body
+            else:
+                message = None
+        else:
+            message = None
+
+        if isinstance(parsed, dict):
+            detail = parsed.get("detail")
+            if isinstance(detail, dict):
+                message = detail.get("message") or detail.get("status") or json.dumps(detail)
+            elif isinstance(detail, list):
+                parts = []
+                for item in detail:
+                    if not isinstance(item, dict):
+                        continue
+                    field = None
+                    loc = item.get("loc")
+                    if isinstance(loc, list):
+                        for part in reversed(loc):
+                            if isinstance(part, str) and part != "body":
+                                field = part
+                                break
+                    msg = item.get("msg")
+                    if field:
+                        parts.append(f"{field} — {msg}")
+                    else:
+                        parts.append(f"{msg}")
+                if parts:
+                    message = "; ".join(parts)
+            elif isinstance(detail, str):
+                message = detail
+            elif message is None:
+                message = parsed.get("message") or json.dumps(parsed)
+        elif message is None:
+            message = str(exc)
+
+        message = _one_line(message)
+
+        if status in _STATUS_HINTS:
+            message = f"{message}  →  {_STATUS_HINTS[status]}"
+
+        if status is not None:
+            return f"HTTP {status}: {message}"
+        return message
+    except Exception:
+        return _one_line(str(exc))
+
+
 def transcribe(client, audio_path, *, model_id, speakers, language, num_speakers,
                tag_audio_events, timestamps_granularity, diarization_threshold,
                no_verbatim, detect_speaker_roles, keyterms, temperature, seed):
@@ -294,7 +382,7 @@ def process_file(client, audio_path, *, out_format, output_path, speakers, langu
             seed=seed,
         )
     except Exception as e:
-        print(f"⚠  Transcription failed: {e}")
+        print(f"⚠  Transcription failed: {describe_api_error(e)}")
         return False
 
     if out_format == "json":
