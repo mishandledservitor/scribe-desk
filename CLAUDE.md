@@ -37,7 +37,9 @@ Spec Kit is *not* set up here, unlike the repo template's default. This is a thr
 
 ## Current status
 
-Last updated: 2026-08-23
+Last updated: 2026-08-24
+
+**A successful result can be re-transcribed without a trip to Finder.** The README's two-pass workflow for speaker labels — run once to see the `Speaker 0:` / `Speaker 1:` numbers, label them, run again — used to strand the audio: a successful run moved the file from `inbox/` to `processed/` and the result dict discarded `dest`, so the main screen (which scans `inbox/` only) could no longer find it. The move now goes through `move_to_processed(input_path)`, which the worker calls instead of moving inline and which returns the audio's real final location in all three cases (moved, left alone because it wasn't in `inbox/`, left alone because the move failed). Every result carries that location under `"audio"`. Each successful row in the Results panel now has a **↩ Re-transcribe** action, wired with its own `Text` tag the same way the transcript-opening row is; it calls `requeue_audio(path)` (`True`/`False`, never raises, mirrors `open_transcript`) and on success adds the file back to the list and returns to the main screen with it selected. Verified by testing `move_to_processed` and `requeue_audio` directly, plus the worker's `run()` producing an `"audio"` key on a successful result — per rule 5, the tag wiring itself is code-reviewed only, since building the widget tree needs a window server this session doesn't have.
 
 **A result in the results panel opens.** Double-clicking a successful line calls `open_transcript(path)`, a plain function that shells out to `open` and returns `False` on a missing file instead of raising, so `_open_result_transcript` can show a dialog rather than let a moved-or-deleted transcript crash the callback. Wired with per-result `Text` tags (`open_<i>`), the same idiom Tk uses for clickable regions in a widget that isn't a Listbox. Verified by testing `open_transcript` directly, per rule 5 — the tag wiring itself is code-reviewed only, not exercised by a test, since building the widget tree needs a window server this session doesn't have.
 

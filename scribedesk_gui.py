@@ -101,6 +101,35 @@ def open_transcript(path):
     return True
 
 
+def move_to_processed(input_path, on_error=None):
+    """Moves a finished input out of inbox/ into processed/ and returns the
+    audio's final location. Only moves a file that actually lived in
+    INBOX_DIR — anything else is returned unchanged. Never raises: a failed
+    move leaves the audio where it was and, if `on_error` is given, calls it
+    with the exception instead of logging directly, so a caller (the
+    Worker) can route the message to its own log."""
+    if os.path.dirname(os.path.abspath(input_path)) != os.path.abspath(INBOX_DIR):
+        return input_path
+    dest = unique_path(os.path.join(PROCESSED_DIR, os.path.basename(input_path)))
+    try:
+        os.makedirs(PROCESSED_DIR, exist_ok=True)
+        shutil.move(input_path, dest)
+        return dest
+    except Exception as e:
+        if on_error is not None:
+            on_error(e)
+        return input_path
+
+
+def requeue_audio(path):
+    """True if `path` still exists and can be queued for another pass;
+    False without raising when it's empty or gone, mirroring
+    open_transcript."""
+    if not path or not os.path.exists(path):
+        return False
+    return True
+
+
 def scan_inbox():
     try:
         names = sorted(os.listdir(INBOX_DIR))
@@ -285,19 +314,17 @@ class Worker(threading.Thread):
             elapsed = time.time() - t0
             if success:
                 # Move input into processed/ — but only if it lived in inbox/.
-                if os.path.dirname(os.path.abspath(input_path)) == os.path.abspath(INBOX_DIR):
-                    dest = unique_path(os.path.join(PROCESSED_DIR, os.path.basename(input_path)))
-                    try:
-                        os.makedirs(PROCESSED_DIR, exist_ok=True)
-                        shutil.move(input_path, dest)
-                    except Exception as e:
-                        self.q.put(("log", f"⚠  Could not move to processed/: {e}"))
+                audio_path = move_to_processed(
+                    input_path,
+                    on_error=lambda e: self.q.put(
+                        ("log", f"⚠  Could not move to processed/: {e}")))
                 results.append({"input": os.path.basename(input_path),
-                                "output": output_path, "elapsed": elapsed, "ok": True})
+                                "output": output_path, "audio": audio_path,
+                                "elapsed": elapsed, "ok": True})
             else:
                 results.append({"input": os.path.basename(input_path),
-                                "output": None, "elapsed": elapsed, "ok": False,
-                                "error": "\n".join(err_tail[-10:])})
+                                "output": None, "audio": input_path, "elapsed": elapsed,
+                                "ok": False, "error": "\n".join(err_tail[-10:])})
             self.q.put(("file_done", i, total, success, elapsed))
             self.proc = None
         self.q.put(("all_done", results))
@@ -763,6 +790,17 @@ class ProjectsGUI:
         if not open_transcript(path):
             messagebox.showwarning(
                 "Open transcript",
+                f"Couldn't find:\n{path}\n\nIt may have moved or been deleted.",
+                parent=self.root)
+
+    def _requeue_result_audio(self, path):
+        if requeue_audio(path):
+            if path not in self.extra_files:
+                self.extra_files.append(path)
+            self.show_main_screen()
+        else:
+            messagebox.showwarning(
+                "Re-transcribe",
                 f"Couldn't find:\n{path}\n\nIt may have moved or been deleted.",
                 parent=self.root)
 
@@ -1232,6 +1270,19 @@ class ProjectsGUI:
                                  lambda _e, path=r["output"]: self._open_result_transcript(path))
                     txt.tag_bind(tag, "<Enter>", lambda _e: txt.config(cursor="hand2"))
                     txt.tag_bind(tag, "<Leave>", lambda _e: txt.config(cursor=""))
+
+                    # Separate clickable region for re-transcribing the
+                    # source audio — a second pass for speaker labels, per
+                    # the README's two-pass workflow.
+                    rq_start = txt.index(tk.END)
+                    txt.insert(tk.END, "     ↩ Re-transcribe\n")
+                    rq_tag = f"requeue_{i}"
+                    txt.tag_add(rq_tag, rq_start, txt.index(tk.END))
+                    txt.tag_configure(rq_tag, underline=False)
+                    txt.tag_bind(rq_tag, "<Double-Button-1>",
+                                 lambda _e, path=r["audio"]: self._requeue_result_audio(path))
+                    txt.tag_bind(rq_tag, "<Enter>", lambda _e: txt.config(cursor="hand2"))
+                    txt.tag_bind(rq_tag, "<Leave>", lambda _e: txt.config(cursor=""))
                 else:
                     for l in (r.get("error") or "").splitlines()[-3:]:
                         line += f"     {l}\n"
