@@ -141,17 +141,35 @@ def assert_safe_slug(slug: str) -> None:
         raise ConfigError(f"Project id too long ({len(slug)} chars): {slug!r}")
 
 
+def _slug_in_use(candidate: str, taken: set[str]) -> bool:
+    """The one three-way in-use check every slug allocator must share: the
+    live registry, an orphaned config file, AND an existing output folder.
+
+    `_migrate_locked` got this right from the start (its own comment: "output/
+    can hold a stray folder from a keep-files delete, so the collision is
+    real") but `unique_slug` — the path every ordinary new/recreated project
+    actually goes through — checked only the first two, so deleting a project
+    with its transcripts kept, then recreating it under the same name, handed
+    the new project the old one's output folder and everything in it. Sharing
+    this function is what keeps that from drifting apart again.
+    """
+    return (candidate in taken
+            or (CONFIG_DIR / f"{candidate}.json").exists()
+            or (OUTPUT_DIR / candidate).exists())
+
+
 def unique_slug(base: str, taken: set[str]) -> str:
-    """base, else base-2, base-3... avoiding both live slugs and any orphaned
-    config file. Archived settings (`<slug>.json.deleted-<stamp>`) deliberately
-    don't reserve a slug: re-creating a deleted project should get the slug
-    back, with the archive left beside it to restore from by hand."""
+    """base, else base-2, base-3... avoiding live slugs, any orphaned config
+    file, AND any existing output folder (see `_slug_in_use`). Archived
+    settings (`<slug>.json.deleted-<stamp>`) deliberately don't reserve a
+    slug: re-creating a deleted project should get the slug back, with the
+    archive left beside it to restore from by hand — but a KEPT output folder
+    (a delete with "keep transcripts") does reserve it, because that folder's
+    contents are exactly what re-using the slug would silently hand to a new
+    project."""
     base = (base or "project")[:MAX_SLUG_LEN].strip("_") or "project"
 
-    def in_use(candidate: str) -> bool:
-        return candidate in taken or (CONFIG_DIR / f"{candidate}.json").exists()
-
-    if not in_use(base):
+    if not _slug_in_use(base, taken):
         return base
     i = 2
     while True:
@@ -161,7 +179,7 @@ def unique_slug(base: str, taken: set[str]) -> str:
         # add_project has committed the registry entry, which used to leave a
         # project the code could no longer load.
         candidate = base[:MAX_SLUG_LEN - len(suffix)].strip("_") + suffix
-        if not in_use(candidate):
+        if not _slug_in_use(candidate, taken):
             return candidate
         i += 1
 
@@ -175,9 +193,33 @@ def _new_registry() -> dict:
 
 
 def _read_registry_or_rebuild() -> dict:
+    """Load `projects.json`, rebuilding a fresh registry only when the file
+    itself is corrupt (unparsable JSON, including empty/zero-byte) or simply
+    doesn't exist yet (first run).
+
+    A file that exists and parses as JSON but could not be *read* — a
+    permissions error, EIO, an NFS/iCloud stall, a full disk, a momentary
+    lock from another process — is not corrupt. Treating it the same as
+    corruption used to rename a perfectly good registry away and silently
+    hand back an empty one seeded with a fresh "Default" project: every
+    project the user had ever made appeared to vanish, with settings files
+    still on disk and nothing in the UI able to reach them. That case now
+    raises instead, so a caller can tell the user their registry could not
+    be read rather than lying to them that it was empty.
+    """
     try:
-        return json.loads(PROJECTS_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        raw = PROJECTS_FILE.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        doc = _new_registry()
+        write_json_atomic(PROJECTS_FILE, doc)
+        return doc
+    except OSError as e:
+        raise ConfigError(
+            f"Could not read project registry at {PROJECTS_FILE}: {e}"
+        ) from e
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
         if PROJECTS_FILE.exists():
             try:
                 stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -274,8 +316,7 @@ def _migrate_locked(doc: dict, over: list, taken: set, moved: list) -> None:
         # it can't load, so a project left un-migrated disappears anyway.
         base = old[:MAX_SLUG_LEN].strip("_") or "project"
         new, i = base, 1
-        while (new in taken or (CONFIG_DIR / f"{new}.json").exists()
-               or (OUTPUT_DIR / new).exists()):
+        while _slug_in_use(new, taken):
             i += 1
             suffix = f"-{i}"
             new = base[:MAX_SLUG_LEN - len(suffix)].strip("_") + suffix
@@ -531,6 +572,30 @@ def settings_path(slug: str) -> Path:
     return CONFIG_DIR / f"{slug}.json"
 
 
+def parse_keyterms_text(raw: str) -> list[str]:
+    """Parse the keyterms editor's one-per-line text into a list of terms.
+
+    Splits ONLY on newlines. The editor is documented as "one per line", but
+    the code used to also split on comma, so a term that legitimately
+    contains one ("Acme, Inc.") was silently cut into two — and ElevenLabs
+    bills per keyterm, so that also charged for a fragment nobody asked for.
+    Shared by the GUI's form collection and by settings normalization below,
+    so the two cannot drift apart the way `unique_slug`/`_migrate_locked` did.
+    """
+    return [t.strip() for t in (raw or "").splitlines() if t.strip()]
+
+
+def _normalize_keyterms(kt) -> list[str]:
+    """keyterms is always a clean list[str]. A string value (a hand-edited
+    config, or an old on-disk format) is parsed with the same one-per-line
+    rule as the GUI editor — see `parse_keyterms_text`."""
+    if isinstance(kt, str):
+        kt = parse_keyterms_text(kt)
+    if not isinstance(kt, list):
+        kt = []
+    return [str(t).strip() for t in kt if str(t).strip()]
+
+
 def load_settings(slug: str) -> dict:
     """Return the project's settings, merged over defaults (missing keys filled,
     unknown keys dropped)."""
@@ -544,13 +609,7 @@ def load_settings(slug: str) -> dict:
                     merged[k] = raw[k]
     except (OSError, json.JSONDecodeError):
         pass
-    # keyterms is always a clean list[str].
-    kt = merged.get("keyterms")
-    if isinstance(kt, str):
-        kt = re.split(r"[,\n]", kt)
-    if not isinstance(kt, list):
-        kt = []
-    merged["keyterms"] = [str(t).strip() for t in kt if str(t).strip()]
+    merged["keyterms"] = _normalize_keyterms(merged.get("keyterms"))
     od = merged.get("output_dir")
     merged["output_dir"] = od.strip() if isinstance(od, str) else ""
     return merged
@@ -562,10 +621,7 @@ def save_settings(slug: str, settings: dict) -> None:
     for k in DEFAULT_SETTINGS:
         if k in settings:
             clean[k] = settings[k]
-    kt = clean.get("keyterms") or []
-    if isinstance(kt, str):
-        kt = re.split(r"[,\n]", kt)
-    clean["keyterms"] = [str(t).strip() for t in kt if str(t).strip()]
+    clean["keyterms"] = _normalize_keyterms(clean.get("keyterms") or [])
     od = clean.get("output_dir")
     clean["output_dir"] = od.strip() if isinstance(od, str) else ""
     write_json_atomic(settings_path(slug), clean)

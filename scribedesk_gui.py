@@ -654,7 +654,8 @@ class ProjectsGUI:
                     "Delete project",
                     f"Remove “{nm}”?\n\n"
                     f"Yes = also delete its output/ transcripts folder.\n"
-                    f"No = remove the project but keep its transcripts on disk.\n"
+                    f"No = remove the project but keep its transcripts on disk, at:\n"
+                    f"{display_path(out)}\n"
                     f"Cancel = do nothing.\n\n{kept}",
                     parent=win)
                 if also is None:
@@ -982,7 +983,9 @@ class ProjectsGUI:
     def _collect_form(self):
         """Read widgets into a settings dict (persistable form: keyterms=list)."""
         kt_raw = self.keyterms_text.get("1.0", tk.END)
-        keyterms = [t.strip() for t in kt_raw.replace(",", "\n").splitlines() if t.strip()]
+        # One per line, matching the editor's own label -- a keyterm that
+        # contains a comma (e.g. "Acme, Inc.") must not be split into two.
+        keyterms = cfg.parse_keyterms_text(kt_raw)
         return {
             "model": self.opts["model"].get(),
             "language": self._lang_codes[self._lang_cb.current()] or "",
