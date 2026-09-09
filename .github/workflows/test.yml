@@ -1,0 +1,38 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      # test_scribedesk_gui.py never builds a widget tree: tk.Tk() is only
+      # called from main() in scribedesk_gui.py, gated by
+      # `if __name__ == "__main__":`, which the tests never exercise. So the
+      # runner only needs tkinter importable, not a virtual display — no
+      # xvfb here on purpose.
+      - name: Install python3-tk (tkinter, no display needed)
+        run: sudo apt-get update && sudo apt-get install -y python3-tk
+
+      # A venv sidesteps Ubuntu's "externally managed environment" pip
+      # restriction without assuming which Ubuntu version ubuntu-latest
+      # resolves to. A venv shares the base interpreter's standard library
+      # and lib-dynload directory, so the python3-tk install above is still
+      # visible to it.
+      - name: Create a virtual environment and install pytest
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip pytest
+
+      - name: Run the pytest suite
+        run: .venv/bin/python -m pytest -q
+
+      - name: Run the GUI unit tests
+        run: .venv/bin/python -m unittest test_scribedesk_gui -v
