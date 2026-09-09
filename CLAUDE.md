@@ -37,7 +37,7 @@ Spec Kit is *not* set up here, unlike the repo template's default. This is a thr
 
 ## Current status
 
-Last updated: 2026-09-02
+Last updated: 2026-09-09
 
 **A recreated project no longer inherits a deleted project's kept transcripts.** Deleting a project while choosing "keep the transcripts" freed its slug for reuse, but `unique_slug` only checked the registry and any orphaned config file, not the output folder — so a later project of the same name silently got the old project's `output/<slug>/` folder as its own, and the tool's own "delete transcripts" option could then destroy exactly what the first delete promised to keep. `unique_slug` and `_migrate_locked` (which already got this right) now share one three-way check via `_slug_in_use`. Two smaller findings from the same review, fixed alongside it since the hand was in the same module: `_read_registry_or_rebuild` no longer treats an unreadable (not corrupt) `projects.json` the same as a corrupt one — an `OSError` now raises instead of silently erasing every project from the UI; and keyterms containing a comma (e.g. "Acme, Inc.") no longer get silently split into two ElevenLabs-billed terms, via a shared `parse_keyterms_text` used by both the GUI's form collection and `scribedesk_config.py`'s settings normalization. Verified by `test_scribedesk_config.py` (new — the module's first test coverage), each of the three fixes proven red against the shipped code and green after, run against a sandboxed copy of the module, never a real transcript directory. Found by the 2026-09-01 adversarial review recorded in vl-management's `reports/2026-09-01-adversarial-review-scribe-desk.md`.
 
