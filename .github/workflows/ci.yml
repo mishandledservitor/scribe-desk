@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# No secrets: no test calls the ElevenLabs API.
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      # The tests import scribedesk_gui, so tkinter has to be importable, but
+      # no widget tree is built, so no virtual display is needed.
+      - name: Install python3-tk
+        run: sudo apt-get update && sudo apt-get install -y python3-tk
+
+      # A venv sidesteps Ubuntu's "externally managed environment" pip
+      # restriction and still sees the system tkinter.
+      - name: Create a virtual environment and install pytest
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip pytest
+
+      - name: Check Python and shell syntax
+        run: |
+          .venv/bin/python -m compileall -q *.py
+          bash -n setup.sh scribe-desk scribe-desk-stt
+
+      - name: Run the test suite
+        run: .venv/bin/python -m pytest -q

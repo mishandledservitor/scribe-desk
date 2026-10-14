@@ -1,0 +1,11 @@
+#!/bin/bash
+# CLI launcher: runs scribedesk_stt.py in the repo's own venv (see setup.sh).
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+LOCAL_VENV="$SCRIPT_DIR/venv"
+
+if [ ! -d "$LOCAL_VENV" ]; then
+    echo "⚠  No venv found. Run $SCRIPT_DIR/setup.sh first." >&2
+    exit 1
+fi
+source "$LOCAL_VENV/bin/activate"
+exec python "$SCRIPT_DIR/scribedesk_stt.py" "$@"

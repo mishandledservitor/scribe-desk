@@ -1,0 +1,62 @@
+# ─── OS junk ───
+.DS_Store
+*.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# ─── Editor / IDE ───
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ─── Secrets ───
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ─── Per-project registry + settings ───
+# Local state, not config: a project's keyterms are the names of the people in
+# its meetings, and its output_dir is a path on this machine. Both are the
+# user's, not the tool's.
+projects.json
+config/*
+!config/.gitkeep
+*.corrupt-*
+*.lock
+*.tmp.*
+
+# ─── Drop-folders (keep dirs, ignore contents) ───
+inbox/*
+processed/*
+output/*
+!inbox/.gitkeep
+!processed/.gitkeep
+!output/.gitkeep
+
+# ─── Python ───
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# ─── Built app (setup.sh / build_app.py writes it for this clone) ───
+Scribe Desk.app/
+
+# ─── Runtime ───
+app-launch.log
+*.log
+.scratch/
+
+# ─── Claude Code local state and personal notes ───
+.claude/settings.local.json
+.claude/worktrees/
+.claude/skills/*
+!.claude/skills/speckit-*/
+HANDOFF.md
+notes/

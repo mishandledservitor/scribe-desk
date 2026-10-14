@@ -1,0 +1,4 @@
+#!/bin/bash
+# GUI launcher for Scribe Desk.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+exec python3 "$SCRIPT_DIR/scribedesk_gui.py" "$@"
